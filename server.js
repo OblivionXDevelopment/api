@@ -4,63 +4,63 @@ import crypto from "crypto";
 import cors from "cors";
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 const DB_FILE = "./database.json";
 
 app.use(cors());
 app.use(express.json());
 
-// ---------- DATABASE ----------
+// ---------- SAFE DATABASE ----------
 
 function loadDB() {
-  return JSON.parse(fs.readFileSync(DB_FILE, "utf8"));
+  if (!fs.existsSync(DB_FILE)) {
+    const fresh = { sessions: {}, keys: {} };
+    fs.writeFileSync(DB_FILE, JSON.stringify(fresh, null, 2));
+    return fresh;
+  }
+
+  try {
+    return JSON.parse(fs.readFileSync(DB_FILE, "utf8"));
+  } catch {
+    const fresh = { sessions: {}, keys: {} };
+    fs.writeFileSync(DB_FILE, JSON.stringify(fresh, null, 2));
+    return fresh;
+  }
 }
 
 function saveDB(db) {
   fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
 }
 
-// ---------- UTIL ----------
+// ---------- HEALTH CHECK ----------
 
-function generateKey() {
-  return `Oblivion-${rand()}-${rand()}-${rand()}`;
-}
+app.get("/", (req, res) => {
+  res.send("✅ OblivionX API is running");
+});
+
+// ---------- UTIL ----------
 
 function rand() {
   return crypto.randomBytes(2).toString("hex").toUpperCase();
 }
 
-// ---------- CHECKPOINT ----------
+function generateKey() {
+  return `Oblivion-${rand()}-${rand()}-${rand()}`;
+}
 
-app.post("/api/check-completion", (req, res) => {
-  const { sessionId } = req.body;
-  const db = loadDB();
-
-  // Simulated completion (Lootlabs / Workink redirect verification)
-  if (!db.sessions[sessionId]) {
-    db.sessions[sessionId] = { completed: false };
-    saveDB(db);
-    return res.json({ completed: false });
-  }
-
-  // Mark complete after first poll
-  db.sessions[sessionId].completed = true;
-  saveDB(db);
-
-  res.json({ completed: true });
-});
-
-// ---------- GENERATE KEY ----------
+// ---------- GENERATE KEY (INSTANT) ----------
 
 app.post("/api/generate-key", (req, res) => {
   const { sessionId, system } = req.body;
   const db = loadDB();
 
-  if (!db.sessions[sessionId]?.completed)
-    return res.json({ success: false, message: "Checkpoint not completed" });
+  if (!sessionId)
+    return res.status(400).json({ success: false, message: "Missing sessionId" });
 
-  if (db.keys[sessionId])
+  // If key already exists, return it
+  if (db.keys[sessionId]) {
     return res.json({ success: true, key: db.keys[sessionId].key });
+  }
 
   const hours = system === "lootlabs" ? 72 : 24;
   const expiresAt = Date.now() + hours * 60 * 60 * 1000;
@@ -99,7 +99,7 @@ app.post("/api/check-key", (req, res) => {
   });
 });
 
-// ---------- VALIDATE KEY (EXECUTOR) ----------
+// ---------- VALIDATE KEY ----------
 
 app.post("/api/validate-key", (req, res) => {
   const { key, hwid } = req.body;
@@ -113,7 +113,7 @@ app.post("/api/validate-key", (req, res) => {
     return res.json({ isValid: false, message: "Key expired" });
 
   if (!entry.hwid) {
-    entry.hwid = hwid; // bind first time
+    entry.hwid = hwid;
     saveDB(db);
   }
 
@@ -126,6 +126,8 @@ app.post("/api/validate-key", (req, res) => {
   });
 });
 
-app.listen(PORT, () =>
-  console.log(`✅ OblivionX API running on port ${PORT}`)
-);
+// ---------- START ----------
+
+app.listen(PORT, () => {
+  console.log(`✅ OblivionX API running on port ${PORT}`);
+});
