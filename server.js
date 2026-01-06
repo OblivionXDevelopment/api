@@ -48,7 +48,7 @@ function generateKey() {
   return `Oblivion-${rand()}-${rand()}-${rand()}`;
 }
 
-// ---------- GENERATE KEY (INSTANT) ----------
+// ---------- GENERATE KEY ----------
 
 app.post("/api/generate-key", (req, res) => {
   const { sessionId, system } = req.body;
@@ -57,7 +57,6 @@ app.post("/api/generate-key", (req, res) => {
   if (!sessionId)
     return res.status(400).json({ success: false, message: "Missing sessionId" });
 
-  // If key already exists, return it
   if (db.keys[sessionId]) {
     return res.json({ success: true, key: db.keys[sessionId].key });
   }
@@ -112,13 +111,11 @@ app.post("/api/validate-key", (req, res) => {
   if (Date.now() > entry.expiresAt)
     return res.json({ isValid: false, message: "Key expired" });
 
-  if (!entry.hwid) {
+  // ✅ FIXED HWID LOGIC (YOUR REQUEST)
+  if (!entry.hwid || entry.hwid !== hwid) {
     entry.hwid = hwid;
     saveDB(db);
   }
-
-  if (entry.hwid !== hwid)
-    return res.json({ isValid: false, message: "HWID mismatch" });
 
   res.json({
     isValid: true,
